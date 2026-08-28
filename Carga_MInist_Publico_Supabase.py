@@ -32,6 +32,7 @@ import glob
 import sys
 import tempfile
 import gdown
+import math
 
 # ============================================================
 # CONFIGURAÇÕES
@@ -295,16 +296,28 @@ def enviar_supabase(client, df, mes, ano):
     client.table(TABELA).delete().gte("DATA", data_inicio).lt("DATA", data_fim).execute()
     print(f"    Registros antigos removidos")
 
-    # Substituir NaN por None
-    df_upload = df.where(df.notna(), None)
+    # Função para limpar qualquer tipo de NaN, Infinito ou valor nulo do Pandas
+    def limpar_valor(val):
+        if val is None or pd.isna(val):
+            return None
+        if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+            return None
+        return val
+
+    # Converte e higieniza registro por registro
+    registros = df.to_dict(orient="records")
+    registros_limpos = [
+        {coluna: limpar_valor(valor) for coluna, valor in linha.items()}
+        for linha in registros
+    ]
 
     # Inserir em lotes de 500
-    registros = df_upload.to_dict(orient="records")
-    for i in range(0, len(registros), 500):
-        lote = registros[i:i+500]
+    for i in range(0, len(registros_limpos), 500):
+        lote = registros_limpos[i:i+500]
         client.table(TABELA).insert(lote).execute()
 
-    print(f"    ✅ {len(registros)} registros inseridos")
+    print(f"    ✅ {len(registros_limpos)} registros inseridos")
+
 
 
 def validar_configuracao():
